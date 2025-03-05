@@ -8,6 +8,9 @@ const ARTICLES_DIR = path.join(process.cwd(), "articles");
 // Default model to use
 const AI_MODEL = "deepseek-r1:1.5b"; // Changed from llama2 to deepseek-coder 7B
 
+// Localhost IP
+const LOCALHOST_IP = "https://bf01-153-33-34-56.ngrok-free.app";
+
 export async function POST(request: Request) {
   try {
     const { prompt } = await request.json();
@@ -15,7 +18,7 @@ export async function POST(request: Request) {
     // Ensure articles directory exists
     try {
       await fs.access(ARTICLES_DIR);
-    } catch (error) {
+    } catch {
       // Create the directory if it doesn't exist
       await fs.mkdir(ARTICLES_DIR, { recursive: true });
 
@@ -88,7 +91,7 @@ Replace this sample article with your own content to get better results!`;
 
     try {
       // Check if Ollama is running
-      const ollamaCheck = await fetch("http://localhost:11434/api/version")
+      const ollamaCheck = await fetch(`${LOCALHOST_IP}/api/version`)
         .then((res) => res.ok)
         .catch(() => false);
 
@@ -104,12 +107,10 @@ Replace this sample article with your own content to get better results!`;
 
       // Check if the model is available
       try {
-        const modelCheckResponse = await fetch(
-          "http://localhost:11434/api/tags"
-        );
+        const modelCheckResponse = await fetch(`${LOCALHOST_IP}/api/tags`);
         const modelData = await modelCheckResponse.json();
         const isModelAvailable = modelData.models?.some(
-          (model: any) => model.name === AI_MODEL
+          (model: { name: string }) => model.name === AI_MODEL
         );
 
         if (!isModelAvailable) {
@@ -130,16 +131,14 @@ ollama pull llama2`,
       }
 
       // Generate article using Ollama
-      const ollamaResponse = await fetch(
-        "http://localhost:11434/api/generate",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: AI_MODEL,
-            prompt: `You are an expert content writer. Based on the following reference articles, write a new comprehensive article about "${prompt}".
+      const ollamaResponse = await fetch(`${LOCALHOST_IP}/api/generate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: AI_MODEL,
+          prompt: `You are an expert content writer. Based on the following reference articles, write a new comprehensive article about "${prompt}".
            Use the writing style, tone, and structure from these articles, but create entirely original content.
            Incorporate relevant insights and patterns from the source articles while maintaining originality.
            Do not include any thoughts or explanations about the writing process.
@@ -149,11 +148,10 @@ ollama pull llama2`,
            ${articlesContent}
            
            Write a well-structured, engaging article about "${prompt}":`,
-            stream: false,
-            stop: ["<think></think>"],
-          }),
-        }
-      );
+          stream: false,
+          stop: ["<think></think>"],
+        }),
+      });
 
       if (!ollamaResponse.ok) {
         const errorText = await ollamaResponse.text();
