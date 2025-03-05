@@ -9,7 +9,7 @@ const ARTICLES_DIR = path.join(process.cwd(), "articles");
 const AI_MODEL = "deepseek-r1:1.5b"; // Changed from llama2 to deepseek-coder 7B
 
 // Localhost IP
-const LOCALHOST_IP = "https://bf01-153-33-34-56.ngrok-free.app";
+const LOCALHOST_IP = "https://workable-lemur-primary.ngrok-free.app";
 
 export async function POST(request: Request) {
   try {
