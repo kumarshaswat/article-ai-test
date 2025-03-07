@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,13 +14,33 @@ import {
 } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, FileText, AlertTriangle } from "lucide-react";
+import { Loader2, FileText, AlertTriangle, ChevronRight } from "lucide-react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export default function Home() {
   const [prompt, setPrompt] = useState("");
-  const [generatedArticle, setGeneratedArticle] = useState("");
+  const [rawArticle, setRawArticle] = useState("");
+  const [processedArticle, setProcessedArticle] = useState("");
+  const [thoughtContent, setThoughtContent] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expandedThought, setExpandedThought] = useState(false);
+
+  useEffect(() => {
+    // Process the raw article when it changes
+    if (rawArticle) {
+      const thoughtMatch = rawArticle.match(/<think>(.*?)<\/think>/s);
+      const markdownContent = rawArticle
+        .replace(/<think>.*?<\/think>/s, "")
+        .trim();
+
+      if (thoughtMatch) {
+        setThoughtContent(thoughtMatch[1].trim());
+      }
+      setProcessedArticle(markdownContent);
+    }
+  }, [rawArticle]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,8 +48,11 @@ export default function Home() {
     if (!prompt.trim()) return;
 
     setIsLoading(true);
-    setGeneratedArticle("");
+    setRawArticle("");
+    setProcessedArticle("");
+    setThoughtContent("");
     setError(null);
+    setExpandedThought(false);
 
     try {
       const response = await fetch("/api/generate", {
@@ -45,23 +68,33 @@ export default function Home() {
         throw new Error(errorData.error || "Failed to generate article");
       }
 
-      const contentType = response.headers.get("Content-Type");
-      if (contentType && contentType.includes("text/plain")) {
-        const text = await response.text();
-        setGeneratedArticle(text);
-      } else {
-        const data = await response.json();
-        if (data.error) {
-          throw new Error(data.error);
+      // Create a reader for streaming
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      // Stream the response token by token
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          break;
         }
-        setGeneratedArticle(data.article || "No content generated");
+
+        // Decode the chunk and update the article text
+        const chunk = decoder.decode(value);
+        setRawArticle((prev) => prev + chunk);
       }
     } catch (error) {
       console.error("Error generating article:", error);
       setError(
         error instanceof Error ? error.message : "Failed to generate article"
       );
-      setGeneratedArticle("");
+      setRawArticle("");
+      setProcessedArticle("");
     } finally {
       setIsLoading(false);
     }
@@ -82,7 +115,7 @@ export default function Home() {
         </Alert>
       )}
 
-      <div className="grid gap-8 md:grid-cols-2">
+      <div className="grid gap-8">
         <Card>
           <CardHeader>
             <CardTitle>Generate New Article</CardTitle>
@@ -118,23 +151,52 @@ export default function Home() {
             </CardFooter>
           </form>
         </Card>
+        {processedArticle && (
+          <div className="space-y-4">
+            {thoughtContent && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <button
+                      onClick={() => setExpandedThought(!expandedThought)}
+                      className="flex items-center hover:bg-accent hover:text-accent-foreground p-1 rounded"
+                    >
+                      <ChevronRight
+                        className={`mr-2 transition-transform ${
+                          expandedThought ? "rotate-90" : ""
+                        }`}
+                      />
+                      AI Thought Process
+                    </button>
+                  </CardTitle>
+                </CardHeader>
+                {expandedThought && (
+                  <CardContent className="bg-muted/50 p-4 rounded-b-lg">
+                    <pre className="whitespace-pre-wrap text-sm">
+                      {thoughtContent}
+                    </pre>
+                  </CardContent>
+                )}
+              </Card>
+            )}
+            <Card>
+              <CardHeader>
+                <CardTitle>Generated Article</CardTitle>
+              </CardHeader>
+              <CardContent className="prose max-w-none p-12">
+                <Markdown remarkPlugins={[remarkGfm]}>
+                  {processedArticle}
+                </Markdown>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Generated Article</CardTitle>
-            <CardDescription>
-              AI-generated article based on your reference materials
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={generatedArticle}
-              readOnly
-              className="min-h-[400px] resize-none font-serif"
-              placeholder="Your AI-generated article will appear here..."
-            />
-          </CardContent>
-        </Card>
+        {isLoading && (
+          <div className="flex justify-center items-center mt-4">
+            <Loader2 className="h-8 w-8 animate-spin" />
+          </div>
+        )}
       </div>
     </main>
   );
